@@ -24,13 +24,32 @@ defmodule Liquix do
   open_tag = ignore(string("{%") |> concat(whitespace_or_nothing))
   close_tag = ignore(whitespace_or_nothing |> string("%}"))
 
-  if_clause =
-    object_path |> reduce({__MODULE__, :object_present?, []}) |> unwrap_and_tag(:if_clause)
+  operator =
+    choice([string("=="), string("!="), string(">"), string("<"), string(">="), string("<=")])
+
+  bool_operator = choice([string("and"), string("or")])
+
+  if_object =
+    object_path
+    |> reduce({__MODULE__, :object_present?, []})
+
+  defparsec(
+    :if_clause,
+    if_object
+    |> optional(
+      ignore(whitespace_or_nothing)
+      |> concat(bool_operator)
+      |> ignore(whitespace_or_nothing)
+      |> parsec(:if_clause)
+    )
+    |> tag(:if_clause)
+    |> reduce({__MODULE__, :c_if_clause, []})
+  )
 
   if_tag =
     open_tag
     |> ignore(string("if "))
-    |> concat(if_clause)
+    |> parsec(:if_clause)
     |> concat(close_tag)
     |> tag(parsec(:markup), :body)
     |> ignore(open_tag |> concat(string("endif")) |> concat(close_tag))
@@ -68,7 +87,22 @@ defmodule Liquix do
     end)
   end
 
-  def if_tag(if: [{:if_clause, ast} | [body: body]]) do
+  def c_if_clause(if_clause: [a_clause, "and", b_clause]) do
+    quote do
+      Kernel.and(unquote(a_clause), unquote(c_if_clause(b_clause)))
+    end
+  end
+
+  def c_if_clause(if_clause: [a_clause, "or", b_clause]) do
+    quote do
+      Kernel.or(unquote(a_clause), unquote(c_if_clause(b_clause)))
+    end
+  end
+
+  def c_if_clause(if_clause: [single_clause]), do: single_clause
+  def c_if_clause(single_clause), do: single_clause
+
+  def if_tag(if: [ast | [body: body]]) do
     quote do
       if unquote(ast), do: unquote(body), else: ""
     end
@@ -76,34 +110,36 @@ defmodule Liquix do
 
   def object_present?(path) do
     quote do
-      unquote(__MODULE__).safe_present?(data, unquote(path))
-    end
-  end
-
-  def safe_present?(data, path) do
-    case safe_lookup(data, path) do
-      {:ok, val} -> !!val
-      :nope -> false
+      Liquix.Runtime.safe_present?(data, unquote(path))
     end
   end
 
   def object_lookup(path) do
     quote do
-      case unquote(__MODULE__).safe_lookup(data, unquote(path)) do
+      case Liquix.Runtime.safe_lookup(data, unquote(path)) do
         {:ok, stuff} -> to_string(stuff)
         :nope -> ""
       end
     end
   end
 
-  def safe_lookup(data, []), do: {:ok, data}
+  defmodule Runtime do
+    def safe_present?(data, path) do
+      case safe_lookup(data, path) do
+        {:ok, val} -> !!val
+        :nope -> false
+      end
+    end
 
-  def safe_lookup(data, [key | rest]) do
-    key = String.to_atom(key)
+    def safe_lookup(data, []), do: {:ok, data}
 
-    case data do
-      %{^key => val} -> safe_lookup(val, rest)
-      _ -> :nope
+    def safe_lookup(data, [key | rest]) do
+      key = String.to_atom(key)
+
+      case data do
+        %{^key => val} -> safe_lookup(val, rest)
+        _ -> :nope
+      end
     end
   end
 end
