@@ -50,22 +50,22 @@ defmodule Liquix do
 
   defparsec(:parse, parsec(:markup))
 
-  defmacro compile(fun_name, template) do
-    # template = Macro.expand(template, __CALLER__)
+  defmacro compile_from_string(fun_name, template) do
+    quote bind_quoted: binding() do
+      body = Liquix.compile(template)
+
+      def unquote(fun_name)(unquote({:data, [], nil})), do: IO.iodata_to_binary(unquote(body))
+    end
+  end
+
+  def compile(template) do
     {:ok, ast, _, _, _, _} = parse(template)
 
-    body =
-      Macro.postwalk(ast, fn
-        {x, y, nil} -> {x, y, Elixir}
-        {x, y, __MODULE__} -> {x, y, Elixir}
-        expr -> expr
-      end)
-
-    {:def, [context: Elixir, import: Kernel],
-     [
-       {fun_name, [context: Elixir], [{:data, [], Elixir}]},
-       [do: {{:., [], [{:__aliases__, [alias: false], [:IO]}, :iodata_to_binary]}, [], [body]}]
-     ]}
+    Macro.postwalk(ast, fn
+      {x, y, nil} -> {x, y, nil}
+      {x, y, __MODULE__} -> {x, y, nil}
+      expr -> expr
+    end)
   end
 
   def if_tag(if: [{:if_clause, ast} | [body: body]]) do
@@ -82,7 +82,7 @@ defmodule Liquix do
 
   def safe_present?(data, path) do
     case safe_lookup(data, path) do
-      {:ok, _} -> true
+      {:ok, val} -> !!val
       :nope -> false
     end
   end
@@ -90,7 +90,7 @@ defmodule Liquix do
   def object_lookup(path) do
     quote do
       case unquote(__MODULE__).safe_lookup(data, unquote(path)) do
-        {:ok, stuff} -> stuff
+        {:ok, stuff} -> to_string(stuff)
         :nope -> ""
       end
     end
