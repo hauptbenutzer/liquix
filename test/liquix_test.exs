@@ -16,6 +16,8 @@ defmodule LiquixTest do
 
   test "greets the world" do
     assert Bam.simple(%{user: %{name: "Peter"}}) == "\n  Hello Peter!\n\n"
+    assert Bam.simple(%{user: %{eman: "Peter"}}) == "\n  Hello !\n\n"
+    assert Bam.simple(%{user: "nopey"}) == "\n  Hello !\n\n"
     assert Bam.simple(%{}) == "\n"
   end
 end

@@ -69,7 +69,9 @@ defmodule Liquix do
   end
 
   def if_tag(if: [{:if_clause, ast} | [body: body]]) do
-    {:if, [context: Elixir, import: Kernel], [ast, [do: body, else: ""]]}
+    quote do
+      if unquote(ast), do: unquote(body), else: ""
+    end
   end
 
   def object_present?(path) do
@@ -78,28 +80,30 @@ defmodule Liquix do
     end
   end
 
-  def safe_present?(data, [key]) do
-    key = String.to_atom(key)
-
-    case data do
-      %{^key => val} ->
-        !!val
-
-      _ ->
-        false
-    end
-  end
-
-  def safe_present?(data, [key | rest]) do
-    key = String.to_atom(key)
-
-    case data do
-      %{^key => val} -> safe_present?(val, rest)
-      _ -> false
+  def safe_present?(data, path) do
+    case safe_lookup(data, path) do
+      {:ok, _} -> true
+      :nope -> false
     end
   end
 
   def object_lookup(path) do
-    Code.string_to_quoted!(Enum.join(["data" | path], "."))
+    quote do
+      case unquote(__MODULE__).safe_lookup(data, unquote(path)) do
+        {:ok, stuff} -> stuff
+        :nope -> ""
+      end
+    end
+  end
+
+  def safe_lookup(data, []), do: {:ok, data}
+
+  def safe_lookup(data, [key | rest]) do
+    key = String.to_atom(key)
+
+    case data do
+      %{^key => val} -> safe_lookup(val, rest)
+      _ -> :nope
+    end
   end
 end
