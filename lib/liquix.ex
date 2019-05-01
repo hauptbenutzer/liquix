@@ -1,0 +1,105 @@
+defmodule Liquix do
+  import NimbleParsec
+
+  word = ascii_string([?a..?z, ?A..?Z, ?0..?9, ?_, ?-], min: 1)
+  whitespace_or_nothing = repeat(string(" "))
+
+  identifier =
+    ascii_string([?a..?z, ?A..?Z, ?_], 1)
+    |> repeat(word)
+    |> optional(ascii_string([??], 1))
+    |> reduce({Enum, :join, []})
+
+  object_path = identifier |> repeat(ignore(string(".")) |> concat(identifier))
+
+  open_object = ignore(string("{{") |> concat(whitespace_or_nothing))
+  close_object = ignore(whitespace_or_nothing |> string("}}"))
+
+  object =
+    open_object
+    |> concat(object_path)
+    |> concat(close_object)
+    |> reduce({__MODULE__, :object_lookup, []})
+
+  open_tag = ignore(string("{%") |> concat(whitespace_or_nothing))
+  close_tag = ignore(whitespace_or_nothing |> string("%}"))
+
+  if_clause =
+    object_path |> reduce({__MODULE__, :object_present?, []}) |> unwrap_and_tag(:if_clause)
+
+  if_tag =
+    open_tag
+    |> ignore(string("if "))
+    |> concat(if_clause)
+    |> concat(close_tag)
+    |> tag(parsec(:markup), :body)
+    |> ignore(open_tag |> concat(string("endif")) |> concat(close_tag))
+    |> tag(:if)
+    |> reduce({__MODULE__, :if_tag, []})
+
+  liquid = choice([object, if_tag])
+
+  garbage =
+    times(
+      lookahead_not(choice([string("{{"), string("{%")]))
+      |> utf8_string([], 1),
+      min: 1
+    )
+
+  defparsec(:markup, repeat(choice([liquid, garbage])))
+
+  defparsec(:parse, parsec(:markup))
+
+  defmacro compile(fun_name, template) do
+    # template = Macro.expand(template, __CALLER__)
+    {:ok, ast, _, _, _, _} = parse(template)
+
+    body =
+      Macro.postwalk(ast, fn
+        {x, y, nil} -> {x, y, Elixir}
+        {x, y, __MODULE__} -> {x, y, Elixir}
+        expr -> expr
+      end)
+
+    {:def, [context: Elixir, import: Kernel],
+     [
+       {fun_name, [context: Elixir], [{:data, [], Elixir}]},
+       [do: {{:., [], [{:__aliases__, [alias: false], [:IO]}, :iodata_to_binary]}, [], [body]}]
+     ]}
+  end
+
+  def if_tag(if: [{:if_clause, ast} | [body: body]]) do
+    {:if, [context: Elixir, import: Kernel], [ast, [do: body, else: ""]]}
+  end
+
+  def object_present?(path) do
+    quote do
+      unquote(__MODULE__).safe_present?(data, unquote(path))
+    end
+  end
+
+  def safe_present?(data, [key]) do
+    key = String.to_atom(key)
+
+    case data do
+      %{^key => val} ->
+        !!val
+
+      _ ->
+        false
+    end
+  end
+
+  def safe_present?(data, [key | rest]) do
+    key = String.to_atom(key)
+
+    case data do
+      %{^key => val} -> safe_present?(val, rest)
+      _ -> false
+    end
+  end
+
+  def object_lookup(path) do
+    Code.string_to_quoted!(Enum.join(["data" | path], "."))
+  end
+end
