@@ -33,6 +33,30 @@ defmodule LiquixTest do
     """
 
     Liquix.compile_from_string(:bool_operator_order, template)
+
+    template = """
+    {% if a == b %}1{% endif %}
+    {% if a != b %}2{% endif %}
+    {% if a > b %}3{% endif %}
+    {% if a < b %}4{% endif %}
+    {% if a >= b %}5{% endif %}
+    {% if a <= b %}6{% endif %}
+    """
+
+    Liquix.compile_from_string(:binary_operators, template)
+
+    template = ~S"""
+    {% if 42 %}1{% endif %}
+    {% if "42" %}2{% endif %}
+    {% if "42\"1" %}3{% endif %}
+    {% if 42.41 %}4{% endif %}
+    {% if true %}5{% endif %}
+    {% if false %}6{% endif %}
+    {% if truedat or nilyou or falseify %}7{% endif %}
+    {% if "" and empty %}8{% endif %}
+    """
+
+    Liquix.compile_from_string(:literal, template)
   end
 
   test "greets the world" do
@@ -61,13 +85,15 @@ defmodule LiquixTest do
   end
 
   test "bool operator order" do
-    assert Bam.bool_operator_order(%{val: %{a: true, b: true, c: true}}) == "1\n2\n"
-    assert Bam.bool_operator_order(%{val: %{a: true, b: true, c: false}}) == "1\n2\n"
-    assert Bam.bool_operator_order(%{val: %{a: true, b: false, c: true}}) == "1\n2\n"
-    assert Bam.bool_operator_order(%{val: %{a: true, b: false, c: false}}) == "\n2\n"
-    assert Bam.bool_operator_order(%{val: %{a: false, b: true, c: true}}) == "\n2\n"
-    assert Bam.bool_operator_order(%{val: %{a: false, b: true, c: false}}) == "\n\n"
-    assert Bam.bool_operator_order(%{val: %{a: false, b: false, c: true}}) == "\n\n"
-    assert Bam.bool_operator_order(%{val: %{a: false, b: false, c: false}}) == "\n\n"
+    assert Bam.binary_operators(%{a: "peter", b: "peter"}) == "1\n\n\n\n5\n6\n"
+    assert Bam.binary_operators(%{a: "peter", b: "peter!"}) == "\n2\n\n4\n\n6\n"
+    assert Bam.binary_operators(%{a: 42, b: 40}) == "\n2\n3\n\n5\n\n"
+    assert Bam.binary_operators(%{a: 40, b: 42}) == "\n2\n\n4\n\n6\n"
+    assert Bam.binary_operators(%{a: "peter", b: "peter"}) == "1\n\n\n\n5\n6\n"
+    assert Bam.binary_operators(%{a: "peter", b: "peter!"}) == "\n2\n\n4\n\n6\n"
+  end
+
+  test "literals" do
+    assert Bam.literal(%{truedat: 1, empty: ""}) == "1\n2\n3\n4\n5\n\n7\n8\n"
   end
 end

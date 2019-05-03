@@ -3,6 +3,7 @@ defmodule Liquix do
 
   word = ascii_string([?a..?z, ?A..?Z, ?0..?9, ?_, ?-], min: 1)
   whitespace_or_nothing = repeat(string(" "))
+  whitespace = times(string(" "), min: 1)
 
   identifier =
     ascii_string([?a..?z, ?A..?Z, ?_], 1)
@@ -12,30 +13,83 @@ defmodule Liquix do
 
   object_path = identifier |> repeat(ignore(string(".")) |> concat(identifier))
 
-  open_object = ignore(string("{{") |> concat(whitespace_or_nothing))
-  close_object = ignore(whitespace_or_nothing |> string("}}"))
+  open_object_tag = ignore(string("{{") |> concat(whitespace_or_nothing))
+  close_object_tag = ignore(whitespace_or_nothing |> string("}}"))
 
   object =
-    open_object
-    |> concat(object_path)
-    |> concat(close_object)
-    |> reduce({__MODULE__, :object_lookup, []})
+    object_path
+    |> reduce({__MODULE__, :object, []})
+
+  object_tag =
+    open_object_tag
+    |> concat(object)
+    |> concat(close_object_tag)
+    |> reduce({__MODULE__, :object_tag, []})
 
   open_tag = ignore(string("{%") |> concat(whitespace_or_nothing))
   close_tag = ignore(whitespace_or_nothing |> string("%}"))
 
-  operator =
-    choice([string("=="), string("!="), string(">"), string("<"), string(">="), string("<=")])
+  binary_operator =
+    choice([string("=="), string("!="), string(">="), string("<="), string(">"), string("<")])
 
   bool_operator = choice([string("and"), string("or")])
 
-  if_object =
-    object_path
-    |> reduce({__MODULE__, :object_present?, []})
+  string_literal =
+    ignore(ascii_char([?"]))
+    |> repeat(
+      lookahead_not(ascii_char([?"]))
+      |> choice([
+        string(~S(\")) |> replace(?"),
+        utf8_char([])
+      ])
+    )
+    |> ignore(ascii_char([?"]))
+    |> reduce({List, :to_string, []})
+
+  int = integer(min: 1)
+
+  float =
+    integer(min: 1)
+    |> concat(string("."))
+    |> integer(min: 1)
+    # TODO: oh boy
+    |> map({Kernel, :to_string, []})
+    |> reduce({Enum, :join, []})
+    |> map({String, :to_float, []})
+    |> reduce({List, :first, []})
+
+  num_literal = choice([float, int])
+
+  bool_literal =
+    choice([
+      string("true") |> replace(true),
+      string("false") |> replace(false),
+      string("nil") |> replace(nil)
+    ])
+    |> lookahead_not(word)
+    |> reduce({List, :first, []})
+
+  literal = choice([string_literal, num_literal, bool_literal])
+
+  placeholder = choice([literal, object])
+
+  defparsec(:test, placeholder)
+
+  if_binary =
+    placeholder
+    |> ignore(whitespace)
+    |> concat(binary_operator)
+    |> ignore(whitespace)
+    |> concat(placeholder)
+    |> reduce({__MODULE__, :if_binary, []})
+
+  if_placeholder =
+    placeholder
+    |> reduce({__MODULE__, :placeholder_present?, []})
 
   defparsec(
     :if_clause,
-    if_object
+    choice([if_binary, if_placeholder])
     |> optional(
       ignore(whitespace_or_nothing)
       |> concat(bool_operator)
@@ -56,7 +110,7 @@ defmodule Liquix do
     |> tag(:if)
     |> reduce({__MODULE__, :if_tag, []})
 
-  liquid = choice([object, if_tag])
+  liquid = choice([object_tag, if_tag])
 
   garbage =
     times(
@@ -71,7 +125,7 @@ defmodule Liquix do
 
   defmacro compile_from_string(fun_name, template) do
     quote bind_quoted: binding() do
-      body = Liquix.compile(template)
+      body = Liquix.compile(template) |> IO.inspect(label: fun_name)
 
       def unquote(fun_name)(unquote({:data, [], nil})), do: IO.iodata_to_binary(unquote(body))
     end
@@ -85,6 +139,12 @@ defmodule Liquix do
       {x, y, __MODULE__} -> {x, y, nil}
       expr -> expr
     end)
+  end
+
+  def if_binary([left, op, right]) do
+    quote do
+      Kernel.unquote(String.to_atom(op))(unquote(left), unquote(right))
+    end
   end
 
   def c_if_clause(if_clause: [a_clause, "and", b_clause]) do
@@ -114,12 +174,24 @@ defmodule Liquix do
     end
   end
 
-  def object_lookup(path) do
+  def object_tag([ast]) do
+    quote do
+      Kernel.to_string(unquote(ast))
+    end
+  end
+
+  def object(path) do
     quote do
       case Liquix.Runtime.safe_lookup(data, unquote(path)) do
-        {:ok, stuff} -> to_string(stuff)
-        :nope -> ""
+        {:ok, stuff} -> stuff
+        :nope -> nil
       end
+    end
+  end
+
+  def placeholder_present?([val]) do
+    quote do
+      !!unquote(val)
     end
   end
 
