@@ -1,0 +1,10 @@
+stages:
+  - test
+
+test:
+  image: bitwalker/alpine-elixir:1.8.1
+  stage: test
+  script:
+    - mix deps.get
+    - mix test
+    - mix format --check-equivalent --check-formatted
