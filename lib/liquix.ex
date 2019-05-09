@@ -22,7 +22,7 @@ defmodule Liquix do
 
   object_tag =
     open_object_tag
-    |> concat(object)
+    |> parsec(:placeholder)
     |> concat(close_object_tag)
     |> reduce({__MODULE__, :object_tag, []})
 
@@ -30,11 +30,19 @@ defmodule Liquix do
   close_tag = ignore(whitespace_or_nothing |> string("%}"))
 
   binary_operator =
-    choice([string("=="), string("!="), string(">="), string("<="), string(">"), string("<")])
+    choice([
+      string("contains"),
+      string("=="),
+      string("!="),
+      string(">="),
+      string("<="),
+      string(">"),
+      string("<")
+    ])
 
   bool_operator = choice([string("and"), string("or")])
 
-  string_literal =
+  double_string_literal =
     ignore(ascii_char([?"]))
     |> repeat(
       lookahead_not(ascii_char([?"]))
@@ -46,6 +54,19 @@ defmodule Liquix do
     |> ignore(ascii_char([?"]))
     |> reduce({List, :to_string, []})
 
+  single_string_literal =
+    ignore(ascii_char([?']))
+    |> repeat(
+      lookahead_not(ascii_char([?']))
+      |> choice([
+        string(~S(\')) |> replace(?'),
+        utf8_char([])
+      ])
+    )
+    |> ignore(ascii_char([?']))
+    |> reduce({List, :to_string, []})
+
+  string_literal = choice([double_string_literal, single_string_literal])
   int = integer(min: 1)
 
   float =
@@ -71,20 +92,18 @@ defmodule Liquix do
 
   literal = choice([string_literal, num_literal, bool_literal])
 
-  placeholder = choice([literal, object])
-
-  defparsec(:test, placeholder)
+  defparsec(:placeholder, choice([literal, object]))
 
   if_binary =
-    placeholder
+    parsec(:placeholder)
     |> ignore(whitespace)
     |> concat(binary_operator)
     |> ignore(whitespace)
-    |> concat(placeholder)
+    |> parsec(:placeholder)
     |> reduce({__MODULE__, :if_binary, []})
 
   if_placeholder =
-    placeholder
+    parsec(:placeholder)
     |> reduce({__MODULE__, :placeholder_present?, []})
 
   defparsec(
@@ -118,6 +137,7 @@ defmodule Liquix do
       |> utf8_string([], 1),
       min: 1
     )
+    |> reduce({Enum, :join, []})
 
   defparsec(:markup, repeat(choice([liquid, garbage])))
 
@@ -125,7 +145,9 @@ defmodule Liquix do
 
   defmacro compile_from_string(fun_name, template) do
     quote bind_quoted: binding() do
-      body = Liquix.compile(template) |> IO.inspect(label: fun_name)
+      body = Liquix.compile(template)
+      IO.puts(inspect(fun_name))
+      body |> Macro.to_string() |> Code.format_string!() |> IO.puts()
 
       def unquote(fun_name)(unquote({:data, [], nil})), do: IO.iodata_to_binary(unquote(body))
     end
@@ -139,6 +161,12 @@ defmodule Liquix do
       {x, y, __MODULE__} -> {x, y, nil}
       expr -> expr
     end)
+  end
+
+  def if_binary([left, "contains", right]) do
+    quote do
+      String.contains?(to_string(unquote(left)), to_string(unquote(right)))
+    end
   end
 
   def if_binary([left, op, right]) do

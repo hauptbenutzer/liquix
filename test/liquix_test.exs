@@ -47,7 +47,7 @@ defmodule LiquixTest do
 
     template = ~S"""
     {% if 42 %}1{% endif %}
-    {% if "42" %}2{% endif %}
+    {% if '42' %}2{% endif %}
     {% if "42\"1" %}3{% endif %}
     {% if 42.41 %}4{% endif %}
     {% if true %}5{% endif %}
@@ -57,6 +57,32 @@ defmodule LiquixTest do
     """
 
     Liquix.compile_from_string(:literal, template)
+
+    template = ~S"""
+    {% if fourtytwo >= 42 %}1{% endif %}
+    {% if "42" > "142" %}2{% endif %}
+    {% if 42.41 == 42.410 %}3{% endif %}
+    {% if falsefy < true %}4{% endif %}
+    {% if there != nil %}5{% endif %}
+    {% if 'this' == "this" %}6{% endif %}
+    """
+
+    Liquix.compile_from_string(:literal_comparison, template)
+
+    template = ~S"""
+    {% if 'fourtytwo' contains 'two' %}1{% endif %}
+    {% if fourtytwo contains 'ourt' %}2{% endif %}
+    {% if '42' contains 42 %}3{% endif %}
+    {% if fourtytwo contains 'zweiundvierzig' %}4{% endif %}
+    """
+
+    Liquix.compile_from_string(:contains, template)
+
+    template = ~S"""
+    {{ 'me' }} {{ "I'm "}} not {{ 42.2 }} {{ false }}
+    """
+
+    Liquix.compile_from_string(:object_literals, template)
   end
 
   test "greets the world" do
@@ -95,5 +121,18 @@ defmodule LiquixTest do
 
   test "literals" do
     assert Bam.literal(%{truedat: 1, empty: ""}) == "1\n2\n3\n4\n5\n\n7\n8\n"
+  end
+
+  test "literal comparison" do
+    assert Bam.literal_comparison(%{fourtytwo: 42, falsefy: false, there: "nil"}) ==
+             "1\n2\n3\n4\n5\n6\n"
+  end
+
+  test "contains" do
+    assert Bam.contains(%{fourtytwo: "fourtytwo"}) == "1\n2\n3\n\n"
+  end
+
+  test "object literals" do
+    assert Bam.object_literals(%{}) == "me I'm  not 42.2 false\n"
   end
 end
