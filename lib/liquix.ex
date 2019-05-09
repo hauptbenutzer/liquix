@@ -2,8 +2,8 @@ defmodule Liquix do
   import NimbleParsec
 
   word = ascii_string([?a..?z, ?A..?Z, ?0..?9, ?_, ?-], min: 1)
-  whitespace_or_nothing = repeat(string(" "))
-  whitespace = times(string(" "), min: 1)
+  whitespace = times(choice([string(" "), string("\t"), string("\n"), string("\r")]), min: 1)
+  whitespace_or_nothing = repeat(whitespace)
 
   identifier =
     ascii_string([?a..?z, ?A..?Z, ?_], 1)
@@ -125,11 +125,61 @@ defmodule Liquix do
     |> parsec(:if_clause)
     |> concat(close_tag)
     |> tag(parsec(:markup), :body)
+    |> optional(
+      times(
+        open_tag
+        |> ignore(string("elsif "))
+        |> parsec(:if_clause)
+        |> concat(close_tag)
+        |> tag(parsec(:markup), :body)
+        |> tag(:elsif),
+        min: 1
+      )
+    )
+    |> concat(
+      optional(
+        open_tag
+        |> ignore(string("else"))
+        |> concat(close_tag)
+        |> tag(parsec(:markup), :body)
+        |> tag(:else)
+      )
+    )
     |> ignore(open_tag |> concat(string("endif")) |> concat(close_tag))
     |> tag(:if)
     |> reduce({__MODULE__, :if_tag, []})
 
-  liquid = choice([object_tag, if_tag])
+  case_tag =
+    open_tag
+    |> ignore(string("case "))
+    |> unwrap_and_tag(parsec(:placeholder), :placeholder)
+    |> concat(close_tag)
+    |> ignore(whitespace_or_nothing)
+    |> times(
+      open_tag
+      |> ignore(string("when "))
+      |> unwrap_and_tag(literal, :literal)
+      |> concat(close_tag)
+      |> tag(parsec(:markup), :body)
+      |> tag(:case),
+      min: 1
+    )
+    |> concat(
+      optional(
+        open_tag
+        |> ignore(string("else"))
+        |> concat(close_tag)
+        |> tag(parsec(:markup), :body)
+        |> tag(:else)
+      )
+    )
+    |> ignore(open_tag |> concat(string("endcase")) |> concat(close_tag))
+    |> tag(:case)
+    |> reduce({__MODULE__, :case_tag, []})
+
+  defparsec(:test, if_tag)
+
+  liquid = choice([object_tag, if_tag, case_tag])
 
   garbage =
     times(
@@ -163,6 +213,34 @@ defmodule Liquix do
     end)
   end
 
+  def case_tag(case: [{:placeholder, placeholder} | clauses]) do
+    case_clauses =
+      Enum.flat_map(clauses, fn
+        {:case, [literal: literal, body: body]} ->
+          quote do
+            unquote(literal) -> unquote(body)
+          end
+
+        {:else, [body: body]} ->
+          quote do
+            _ -> unquote(body)
+          end
+      end)
+
+    empty_else =
+      quote do
+        _ -> ""
+      end
+
+    case_clauses = if Keyword.has_key?(clauses, :else), do: case_clauses, else: Enum.concat(case_clauses, empty_else)
+
+    quote do
+      case unquote(placeholder) do
+        unquote(case_clauses)
+      end
+    end
+  end
+
   def if_binary([left, "contains", right]) do
     quote do
       String.contains?(to_string(unquote(left)), to_string(unquote(right)))
@@ -193,6 +271,38 @@ defmodule Liquix do
   def if_tag(if: [ast | [body: body]]) do
     quote do
       if unquote(ast), do: unquote(body), else: ""
+    end
+  end
+
+  def if_tag(if: [ast | [body: body, else: [body: else_body]]]) do
+    quote do
+      if unquote(ast), do: unquote(body), else: unquote(else_body)
+    end
+  end
+
+  def if_tag(if: [ast, {:body, body} | clauses]) do
+    cond_clauses =
+      Enum.flat_map(clauses, fn
+        {:elsif, [ast, {:body, body}]} ->
+          quote do
+            unquote(ast) -> unquote(body)
+          end
+
+        {:else, [body: body]} ->
+          quote do
+            true -> unquote(body)
+          end
+      end)
+
+    [if_clause] =
+      quote do
+        unquote(ast) -> unquote(body)
+      end
+
+    quote do
+      cond do
+        unquote([if_clause | cond_clauses])
+      end
     end
   end
 
