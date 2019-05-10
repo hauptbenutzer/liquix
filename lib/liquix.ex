@@ -149,6 +149,36 @@ defmodule Liquix do
     |> tag(:if)
     |> reduce({__MODULE__, :if_tag, []})
 
+  unless_tag =
+    open_tag
+    |> ignore(string("unless "))
+    |> unwrap_and_tag(parsec(:if_clause), :condition)
+    |> concat(close_tag)
+    |> tag(parsec(:markup), :body)
+    |> tag(:unless)
+    |> optional(
+      times(
+        open_tag
+        |> ignore(string("elsif "))
+        |> unwrap_and_tag(parsec(:if_clause), :condition)
+        |> concat(close_tag)
+        |> tag(parsec(:markup), :body)
+        |> tag(:elsif),
+        min: 1
+      )
+    )
+    |> concat(
+      optional(
+        open_tag
+        |> ignore(string("else"))
+        |> concat(close_tag)
+        |> tag(parsec(:markup), :body)
+        |> tag(:else)
+      )
+    )
+    |> ignore(open_tag |> concat(string("endunless")) |> concat(close_tag))
+    |> reduce({__MODULE__, :unless_tag, []})
+
   case_tag =
     open_tag
     |> ignore(string("case "))
@@ -179,7 +209,7 @@ defmodule Liquix do
 
   defparsec(:test, if_tag)
 
-  liquid = choice([object_tag, if_tag, case_tag])
+  liquid = choice([object_tag, if_tag, unless_tag, case_tag])
 
   garbage =
     times(
@@ -302,6 +332,39 @@ defmodule Liquix do
     quote do
       cond do
         unquote([if_clause | cond_clauses])
+      end
+    end
+  end
+
+  def unless_tag(clauses) do
+    cond_clauses =
+      Enum.flat_map(clauses, fn
+        {:unless, [condition: condition, body: body]} ->
+          quote do
+            Kernel.not(unquote(condition)) -> unquote(body)
+          end
+
+        {:elsif, [condition: condition, body: body]} ->
+          quote do
+            unquote(condition) -> unquote(body)
+          end
+
+        {:else, [body: body]} ->
+          quote do
+            true -> unquote(body)
+          end
+      end)
+
+    empty_else =
+      quote do
+        true -> ""
+      end
+
+    cond_clauses = if Keyword.has_key?(clauses, :else), do: cond_clauses, else: Enum.concat(cond_clauses, empty_else)
+
+    quote do
+      cond do
+        unquote(cond_clauses)
       end
     end
   end
