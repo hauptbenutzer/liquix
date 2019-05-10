@@ -11,13 +11,25 @@ defmodule Liquix do
     |> optional(ascii_string([??], 1))
     |> reduce({Enum, :join, []})
 
-  object_path = identifier |> repeat(ignore(string(".")) |> concat(identifier))
+  defparsec(
+    :object_path,
+    identifier
+    |> optional(
+      ignore(string("["))
+      |> parsec(:placeholder)
+      |> ignore(string("]"))
+    )
+    |> optional(
+      ignore(string("."))
+      |> parsec(:object_path)
+    )
+  )
 
   open_object_tag = ignore(string("{{") |> concat(whitespace_or_nothing))
   close_object_tag = ignore(whitespace_or_nothing |> string("}}"))
 
   object =
-    object_path
+    parsec(:object_path)
     |> reduce({__MODULE__, :object, []})
 
   object_tag =
@@ -119,6 +131,19 @@ defmodule Liquix do
     |> reduce({__MODULE__, :c_if_clause, []})
   )
 
+  assign_tag =
+    open_tag
+    |> ignore(string("assign"))
+    |> ignore(whitespace)
+    |> unwrap_and_tag(identifier, :var_name)
+    |> ignore(whitespace)
+    |> ignore(string("="))
+    |> ignore(whitespace)
+    |> unwrap_and_tag(parsec(:placeholder), :var_val)
+    |> concat(close_tag)
+    |> tag(parsec(:markup), :body)
+    |> reduce({__MODULE__, :assign_tag, []})
+
   if_tag =
     open_tag
     |> ignore(string("if "))
@@ -209,7 +234,7 @@ defmodule Liquix do
 
   defparsec(:test, if_tag)
 
-  liquid = choice([object_tag, if_tag, unless_tag, case_tag])
+  liquid = choice([object_tag, if_tag, unless_tag, case_tag, assign_tag])
 
   garbage =
     times(
@@ -268,6 +293,13 @@ defmodule Liquix do
       case unquote(placeholder) do
         unquote(case_clauses)
       end
+    end
+  end
+
+  def assign_tag(var_name: var_name, var_val: var_val, body: body) do
+    quote do
+      data = Map.put(data, unquote(String.to_atom(var_name)), unquote(var_val))
+      unquote(body)
     end
   end
 
@@ -331,7 +363,7 @@ defmodule Liquix do
     end
   end
 
-  # TODO: maybe refactor unless/if to use same logic? 
+  # TODO: maybe refactor unless/if to use same logic?
   def unless_tag(clauses) do
     cond_clauses =
       Enum.flat_map(clauses, fn
@@ -402,7 +434,14 @@ defmodule Liquix do
 
     def safe_lookup(data, []), do: {:ok, data}
 
-    def safe_lookup(data, [key | rest]) do
+    def safe_lookup(data, [key | rest]) when is_integer(key) do
+      cond do
+        is_list(data) -> safe_lookup(Enum.at(data, key), rest)
+        true -> :nope
+      end
+    end
+
+    def safe_lookup(data, [key | rest]) when is_binary(key) do
       key = String.to_atom(key)
 
       case data do
