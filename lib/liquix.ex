@@ -122,14 +122,15 @@ defmodule Liquix do
   if_tag =
     open_tag
     |> ignore(string("if "))
-    |> parsec(:if_clause)
+    |> unwrap_and_tag(parsec(:if_clause), :condition)
     |> concat(close_tag)
     |> tag(parsec(:markup), :body)
+    |> tag(:if)
     |> optional(
       times(
         open_tag
         |> ignore(string("elsif "))
-        |> parsec(:if_clause)
+        |> unwrap_and_tag(parsec(:if_clause), :condition)
         |> concat(close_tag)
         |> tag(parsec(:markup), :body)
         |> tag(:elsif),
@@ -146,7 +147,6 @@ defmodule Liquix do
       )
     )
     |> ignore(open_tag |> concat(string("endif")) |> concat(close_tag))
-    |> tag(:if)
     |> reduce({__MODULE__, :if_tag, []})
 
   unless_tag =
@@ -298,24 +298,17 @@ defmodule Liquix do
   def c_if_clause(if_clause: [single_clause]), do: single_clause
   def c_if_clause(single_clause), do: single_clause
 
-  def if_tag(if: [ast | [body: body]]) do
-    quote do
-      if unquote(ast), do: unquote(body), else: ""
-    end
-  end
-
-  def if_tag(if: [ast | [body: body, else: [body: else_body]]]) do
-    quote do
-      if unquote(ast), do: unquote(body), else: unquote(else_body)
-    end
-  end
-
-  def if_tag(if: [ast, {:body, body} | clauses]) do
+  def if_tag(clauses) do
     cond_clauses =
       Enum.flat_map(clauses, fn
-        {:elsif, [ast, {:body, body}]} ->
+        {:if, [condition: condition, body: body]} ->
           quote do
-            unquote(ast) -> unquote(body)
+            unquote(condition) -> unquote(body)
+          end
+
+        {:elsif, [condition: condition, body: body]} ->
+          quote do
+            unquote(condition) -> unquote(body)
           end
 
         {:else, [body: body]} ->
@@ -324,18 +317,21 @@ defmodule Liquix do
           end
       end)
 
-    [if_clause] =
+    empty_else =
       quote do
-        unquote(ast) -> unquote(body)
+        true -> ""
       end
+
+    cond_clauses = if Keyword.has_key?(clauses, :else), do: cond_clauses, else: Enum.concat(cond_clauses, empty_else)
 
     quote do
       cond do
-        unquote([if_clause | cond_clauses])
+        unquote(cond_clauses)
       end
     end
   end
 
+  # TODO: maybe refactor unless/if to use same logic? 
   def unless_tag(clauses) do
     cond_clauses =
       Enum.flat_map(clauses, fn
