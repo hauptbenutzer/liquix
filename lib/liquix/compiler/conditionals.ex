@@ -95,7 +95,9 @@ defmodule Liquix.Compiler.Conditionals do
 
   def case_tag(case: [{:placeholder, placeholder} | clauses]) do
     case_clauses =
-      Enum.flat_map(clauses, fn
+      clauses
+      |> maybe_add_else()
+      |> Enum.flat_map(fn
         {:case, [literal: literal, body: body]} ->
           quote do
             unquote(literal) -> unquote(body)
@@ -107,13 +109,6 @@ defmodule Liquix.Compiler.Conditionals do
           end
       end)
 
-    empty_else =
-      quote do
-        _ -> ""
-      end
-
-    case_clauses = if Keyword.has_key?(clauses, :else), do: case_clauses, else: Enum.concat(case_clauses, empty_else)
-
     quote do
       case unquote(placeholder) do
         unquote(case_clauses)
@@ -123,7 +118,9 @@ defmodule Liquix.Compiler.Conditionals do
 
   def if_tag(clauses) do
     cond_clauses =
-      Enum.flat_map(clauses, fn
+      clauses
+      |> maybe_add_else()
+      |> Enum.flat_map(fn
         {:if, [condition: condition, body: body]} ->
           quote do
             unquote(condition) -> unquote(body)
@@ -140,13 +137,6 @@ defmodule Liquix.Compiler.Conditionals do
           end
       end)
 
-    empty_else =
-      quote do
-        true -> ""
-      end
-
-    cond_clauses = if Keyword.has_key?(clauses, :else), do: cond_clauses, else: Enum.concat(cond_clauses, empty_else)
-
     quote do
       cond do
         unquote(cond_clauses)
@@ -157,7 +147,9 @@ defmodule Liquix.Compiler.Conditionals do
   # TODO: maybe refactor unless/if to use same logic?
   def unless_tag(clauses) do
     cond_clauses =
-      Enum.flat_map(clauses, fn
+      clauses
+      |> maybe_add_else()
+      |> Enum.flat_map(fn
         {:unless, [condition: condition, body: body]} ->
           quote do
             Kernel.not(unquote(condition)) -> unquote(body)
@@ -174,17 +166,14 @@ defmodule Liquix.Compiler.Conditionals do
           end
       end)
 
-    empty_else =
-      quote do
-        true -> ""
-      end
-
-    cond_clauses = if Keyword.has_key?(clauses, :else), do: cond_clauses, else: Enum.concat(cond_clauses, empty_else)
-
     quote do
       cond do
         unquote(cond_clauses)
       end
     end
+  end
+
+  defp maybe_add_else(clauses) do
+    if Keyword.has_key?(clauses, :else), do: clauses, else: Enum.concat(clauses, else: [body: ""])
   end
 end
