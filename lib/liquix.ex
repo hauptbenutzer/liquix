@@ -274,11 +274,14 @@ defmodule Liquix do
 
   defparsec(:parse, parsec(:markup))
 
-  defmacro compile_from_string(fun_name, template) do
+  defmacro compile_from_string(fun_name, template, options \\ []) do
     quote bind_quoted: binding() do
       body = Liquix.compile(template)
-      IO.puts(inspect(fun_name))
-      body |> Macro.to_string() |> Code.format_string!() |> IO.puts()
+
+      if Keyword.get(options, :debug) do
+        IO.puts(inspect(fun_name))
+        body |> Macro.to_string() |> Code.format_string!() |> IO.puts()
+      end
 
       def unquote(fun_name)(unquote({:data, [], nil})), do: IO.iodata_to_binary(unquote(body))
     end
