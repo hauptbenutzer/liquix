@@ -15,9 +15,12 @@ defmodule Liquix do
     :object_path,
     identifier
     |> optional(
-      ignore(string("["))
-      |> parsec(:placeholder)
-      |> ignore(string("]"))
+      times(
+        ignore(string("["))
+        |> parsec(:placeholder)
+        |> ignore(string("]")),
+        min: 1
+      )
     )
     |> optional(
       ignore(string("."))
