@@ -137,7 +137,6 @@ defmodule Liquix do
     {:ok, ast, _, _, _, _} = parse(template)
 
     Macro.postwalk(ast, fn
-      {x, y, nil} -> {x, y, nil}
       {x, y, __MODULE__} -> {x, y, nil}
       expr -> expr
     end)
