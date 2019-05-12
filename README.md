@@ -1,6 +1,6 @@
 # Liquix
 
-**TODO: Add description**
+Liquix is a compile-time Liquid parser. It uses `NimbleParsec` to transform a given Liquid template into executable Elixir code (not entirely unlike Eex).
 
 ## Installation
 
@@ -19,3 +19,6 @@ Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_do
 and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
 be found at [https://hexdocs.pm/liquix](https://hexdocs.pm/liquix).
 
+### Code Caveats
+
+- Currently, in NimbleParsec it is not possible to reference a `defparsec` from another module, i.e. all recursive calls have to happen in the same module. We do want to split up our code for readability, so `Liquix.Compiler` modules currently have `parsec()`-calls that are not defined within that same module.

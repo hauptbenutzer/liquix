@@ -1,19 +1,22 @@
 defmodule Liquix do
   import NimbleParsec
+  import Liquix.Compiler.Common
+  import Liquix.Compiler.Literals
 
-  word = ascii_string([?a..?z, ?A..?Z, ?0..?9, ?_, ?-], min: 1)
-  whitespace = times(choice([string(" "), string("\t"), string("\n"), string("\r")]), min: 1)
-  whitespace_or_nothing = repeat(whitespace)
+  open_object_tag = ignore(string("{{") |> concat(whitespace_or_nothing()))
+  close_object_tag = ignore(whitespace_or_nothing() |> string("}}"))
 
-  identifier =
-    ascii_string([?a..?z, ?A..?Z, ?_], 1)
-    |> repeat(word)
-    |> optional(ascii_string([??], 1))
-    |> reduce({Enum, :join, []})
+  defparsec(:literal, choice([string_literal(), num_literal(), atom_literal(), range_literal()]))
+
+  object =
+    parsec(:object_path)
+    |> reduce({__MODULE__, :object, []})
+
+  defparsec(:placeholder, choice([parsec(:literal), object]))
 
   defparsec(
     :object_path,
-    identifier
+    identifier()
     |> optional(
       times(
         ignore(string("["))
@@ -28,21 +31,14 @@ defmodule Liquix do
     )
   )
 
-  open_object_tag = ignore(string("{{") |> concat(whitespace_or_nothing))
-  close_object_tag = ignore(whitespace_or_nothing |> string("}}"))
-
-  object =
-    parsec(:object_path)
-    |> reduce({__MODULE__, :object, []})
-
   object_tag =
     open_object_tag
-    |> parsec(:placeholder)
+    |> concat(parsec(:placeholder))
     |> concat(close_object_tag)
     |> reduce({__MODULE__, :object_tag, []})
 
-  open_tag = ignore(string("{%") |> concat(whitespace_or_nothing))
-  close_tag = ignore(whitespace_or_nothing |> string("%}"))
+  open_tag = ignore(string("{%") |> concat(whitespace_or_nothing()))
+  close_tag = ignore(whitespace_or_nothing() |> string("%}"))
 
   binary_operator =
     choice([
@@ -57,72 +53,11 @@ defmodule Liquix do
 
   bool_operator = choice([string("and"), string("or")])
 
-  double_string_literal =
-    ignore(ascii_char([?"]))
-    |> repeat(
-      lookahead_not(ascii_char([?"]))
-      |> choice([
-        string(~S(\")) |> replace(?"),
-        utf8_char([])
-      ])
-    )
-    |> ignore(ascii_char([?"]))
-    |> reduce({List, :to_string, []})
-
-  single_string_literal =
-    ignore(ascii_char([?']))
-    |> repeat(
-      lookahead_not(ascii_char([?']))
-      |> choice([
-        string(~S(\')) |> replace(?'),
-        utf8_char([])
-      ])
-    )
-    |> ignore(ascii_char([?']))
-    |> reduce({List, :to_string, []})
-
-  string_literal = choice([double_string_literal, single_string_literal])
-  int = integer(min: 1)
-
-  float =
-    integer(min: 1)
-    |> concat(string("."))
-    |> integer(min: 1)
-    # TODO: oh boy
-    |> map({Kernel, :to_string, []})
-    |> reduce({Enum, :join, []})
-    |> map({String, :to_float, []})
-    |> reduce({List, :first, []})
-
-  # TODO: signed
-  num_literal = choice([float, int])
-
-  range_literal =
-    ignore(string("("))
-    |> unwrap_and_tag(choice([int, parsec(:placeholder)]), :from)
-    |> ignore(string(".."))
-    |> unwrap_and_tag(choice([int, parsec(:placeholder)]), :to)
-    |> ignore(string(")"))
-    |> reduce({__MODULE__, :range_literal, []})
-
-  bool_literal =
-    choice([
-      string("true") |> replace(true),
-      string("false") |> replace(false),
-      string("nil") |> replace(nil)
-    ])
-    |> lookahead_not(word)
-    |> reduce({List, :first, []})
-
-  literal = choice([string_literal, num_literal, bool_literal, range_literal])
-
-  defparsec(:placeholder, choice([literal, object]))
-
   if_binary =
     parsec(:placeholder)
-    |> ignore(whitespace)
+    |> ignore(whitespace())
     |> concat(binary_operator)
-    |> ignore(whitespace)
+    |> ignore(whitespace())
     |> parsec(:placeholder)
     |> reduce({__MODULE__, :if_binary, []})
 
@@ -134,9 +69,9 @@ defmodule Liquix do
     :if_clause,
     choice([if_binary, if_placeholder])
     |> optional(
-      ignore(whitespace_or_nothing)
+      ignore(whitespace_or_nothing())
       |> concat(bool_operator)
-      |> ignore(whitespace_or_nothing)
+      |> ignore(whitespace_or_nothing())
       |> parsec(:if_clause)
     )
     |> tag(:if_clause)
@@ -146,11 +81,11 @@ defmodule Liquix do
   assign_tag =
     open_tag
     |> ignore(string("assign"))
-    |> ignore(whitespace)
-    |> unwrap_and_tag(identifier, :var_name)
-    |> ignore(whitespace)
+    |> ignore(whitespace())
+    |> unwrap_and_tag(identifier(), :var_name)
+    |> ignore(whitespace())
     |> ignore(string("="))
-    |> ignore(whitespace)
+    |> ignore(whitespace())
     |> unwrap_and_tag(parsec(:placeholder), :var_val)
     |> concat(close_tag)
     |> tag(parsec(:markup), :body)
@@ -159,11 +94,11 @@ defmodule Liquix do
   for_tag =
     open_tag
     |> ignore(string("for"))
-    |> ignore(whitespace)
-    |> unwrap_and_tag(identifier, :var_name)
-    |> ignore(whitespace)
+    |> ignore(whitespace())
+    |> unwrap_and_tag(identifier(), :var_name)
+    |> ignore(whitespace())
     |> ignore(string("in"))
-    |> ignore(whitespace)
+    |> ignore(whitespace())
     |> unwrap_and_tag(parsec(:placeholder), :var_val)
     |> concat(close_tag)
     |> tag(parsec(:markup), :body)
@@ -235,11 +170,11 @@ defmodule Liquix do
     |> ignore(string("case "))
     |> unwrap_and_tag(parsec(:placeholder), :placeholder)
     |> concat(close_tag)
-    |> ignore(whitespace_or_nothing)
+    |> ignore(whitespace_or_nothing())
     |> times(
       open_tag
       |> ignore(string("when "))
-      |> unwrap_and_tag(literal, :literal)
+      |> unwrap_and_tag(parsec(:literal), :literal)
       |> concat(close_tag)
       |> tag(parsec(:markup), :body)
       |> tag(:case),
@@ -257,8 +192,6 @@ defmodule Liquix do
     |> ignore(open_tag |> concat(string("endcase")) |> concat(close_tag))
     |> tag(:case)
     |> reduce({__MODULE__, :case_tag, []})
-
-  defparsec(:test, if_tag)
 
   liquid = choice([object_tag, if_tag, unless_tag, case_tag, assign_tag, for_tag])
 
@@ -374,14 +307,6 @@ defmodule Liquix do
   def c_if_clause(if_clause: [single_clause]), do: single_clause
   def c_if_clause(single_clause), do: single_clause
 
-  def range_literal(from: from, to: to) do
-    quote do
-      from = Liquix.Runtime.range_limit(unquote(from))
-      to = Liquix.Runtime.range_limit(unquote(to))
-      from..to |> Enum.to_list()
-    end
-  end
-
   def if_tag(clauses) do
     cond_clauses =
       Enum.flat_map(clauses, fn
@@ -473,63 +398,6 @@ defmodule Liquix do
   def placeholder_present?([val]) do
     quote do
       !!unquote(val)
-    end
-  end
-
-  defmodule Runtime do
-    def range_limit(float) when is_float(float), do: trunc(float)
-    def range_limit(int) when is_integer(int), do: int
-
-    def range_limit(binary) when is_binary(binary) do
-      case Integer.parse(binary) do
-        {int, _} -> int
-        _ -> 0
-      end
-    end
-
-    def range_limit(_), do: 0
-
-    def forloop(list) do
-      length = length(list)
-
-      list
-      |> Enum.with_index()
-      |> Enum.map(fn {item, idx} ->
-        {%{
-           first: idx == 0,
-           last: idx == length - 1,
-           index: idx + 1,
-           index0: idx,
-           length: length,
-           rindex: length - idx,
-           rindex0: length - idx - 1
-         }, item}
-      end)
-    end
-
-    def safe_present?(data, path) do
-      case safe_lookup(data, path) do
-        {:ok, val} -> !!val
-        :nope -> false
-      end
-    end
-
-    def safe_lookup(data, []), do: {:ok, data}
-
-    def safe_lookup(data, [key | rest]) when is_integer(key) do
-      cond do
-        is_list(data) -> safe_lookup(Enum.at(data, key), rest)
-        true -> :nope
-      end
-    end
-
-    def safe_lookup(data, [key | rest]) when is_binary(key) do
-      key = String.to_atom(key)
-
-      case data do
-        %{^key => val} -> safe_lookup(val, rest)
-        _ -> :nope
-      end
     end
   end
 end
