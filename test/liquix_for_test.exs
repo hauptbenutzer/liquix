@@ -17,6 +17,18 @@ defmodule LiquixForTest do
     """
 
     Liquix.compile_from_string(:forloop_object, template)
+
+    template = """
+    {% for i in (0..4) %}{{ i }} {% endfor %}
+    """
+
+    Liquix.compile_from_string(:simple_range, template)
+
+    template = """
+    {% for i in (from..to) %}{{ i }} {% endfor %}
+    """
+
+    Liquix.compile_from_string(:var_range, template)
   end
 
   test "simple for" do
@@ -34,5 +46,15 @@ defmodule LiquixForTest do
                Suzzy 3/2/1/0 of 3, false|true
 
              """
+  end
+
+  test "simple range" do
+    assert Bam.simple_range(%{}) == "0 1 2 3 4 \n"
+  end
+
+  test "var range" do
+    assert Bam.var_range(%{from: -3, to: 2}) == "-3 -2 -1 0 1 2 \n"
+    assert Bam.var_range(%{from: "-3", to: "2"}) == "-3 -2 -1 0 1 2 \n"
+    assert Bam.var_range(%{from: "nosir", to: -2.6}) == "0 -1 -2 \n"
   end
 end

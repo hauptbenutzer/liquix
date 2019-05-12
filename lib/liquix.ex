@@ -94,7 +94,16 @@ defmodule Liquix do
     |> map({String, :to_float, []})
     |> reduce({List, :first, []})
 
+  # TODO: signed
   num_literal = choice([float, int])
+
+  range_literal =
+    ignore(string("("))
+    |> unwrap_and_tag(choice([int, parsec(:placeholder)]), :from)
+    |> ignore(string(".."))
+    |> unwrap_and_tag(choice([int, parsec(:placeholder)]), :to)
+    |> ignore(string(")"))
+    |> reduce({__MODULE__, :range_literal, []})
 
   bool_literal =
     choice([
@@ -105,7 +114,7 @@ defmodule Liquix do
     |> lookahead_not(word)
     |> reduce({List, :first, []})
 
-  literal = choice([string_literal, num_literal, bool_literal])
+  literal = choice([string_literal, num_literal, bool_literal, range_literal])
 
   defparsec(:placeholder, choice([literal, object]))
 
@@ -362,6 +371,14 @@ defmodule Liquix do
   def c_if_clause(if_clause: [single_clause]), do: single_clause
   def c_if_clause(single_clause), do: single_clause
 
+  def range_literal(from: from, to: to) do
+    quote do
+      from = Liquix.Runtime.range_limit(unquote(from))
+      to = Liquix.Runtime.range_limit(unquote(to))
+      from..to |> Enum.to_list()
+    end
+  end
+
   def if_tag(clauses) do
     cond_clauses =
       Enum.flat_map(clauses, fn
@@ -457,6 +474,18 @@ defmodule Liquix do
   end
 
   defmodule Runtime do
+    def range_limit(float) when is_float(float), do: trunc(float)
+    def range_limit(int) when is_integer(int), do: int
+
+    def range_limit(binary) when is_binary(binary) do
+      case Integer.parse(binary) do
+        {int, _} -> int
+        _ -> 0
+      end
+    end
+
+    def range_limit(_), do: 0
+
     def forloop(list) do
       length = length(list)
 
