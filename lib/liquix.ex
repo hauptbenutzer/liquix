@@ -147,6 +147,20 @@ defmodule Liquix do
     |> tag(parsec(:markup), :body)
     |> reduce({__MODULE__, :assign_tag, []})
 
+  for_tag =
+    open_tag
+    |> ignore(string("for"))
+    |> ignore(whitespace)
+    |> unwrap_and_tag(identifier, :var_name)
+    |> ignore(whitespace)
+    |> ignore(string("in"))
+    |> ignore(whitespace)
+    |> unwrap_and_tag(parsec(:placeholder), :var_val)
+    |> concat(close_tag)
+    |> tag(parsec(:markup), :body)
+    |> ignore(open_tag |> concat(string("endfor")) |> concat(close_tag))
+    |> reduce({__MODULE__, :for_tag, []})
+
   if_tag =
     open_tag
     |> ignore(string("if "))
@@ -237,7 +251,7 @@ defmodule Liquix do
 
   defparsec(:test, if_tag)
 
-  liquid = choice([object_tag, if_tag, unless_tag, case_tag, assign_tag])
+  liquid = choice([object_tag, if_tag, unless_tag, case_tag, assign_tag, for_tag])
 
   garbage =
     times(
@@ -303,6 +317,21 @@ defmodule Liquix do
     quote do
       data = Map.put(data, unquote(String.to_atom(var_name)), unquote(var_val))
       unquote(body)
+    end
+  end
+
+  def for_tag(var_name: var_name, var_val: var_val, body: body) do
+    quote do
+      case unquote(var_val) do
+        list when is_list(list) ->
+          for {forloop, item} <- Liquix.Runtime.forloop(list) do
+            data = data |> Map.put(:forloop, forloop) |> Map.put(unquote(String.to_atom(var_name)), item)
+            unquote(body)
+          end
+
+        _ ->
+          ""
+      end
     end
   end
 
@@ -428,6 +457,24 @@ defmodule Liquix do
   end
 
   defmodule Runtime do
+    def forloop(list) do
+      length = length(list)
+
+      list
+      |> Enum.with_index()
+      |> Enum.map(fn {item, idx} ->
+        {%{
+           first: idx == 0,
+           last: idx == length - 1,
+           index: idx + 1,
+           index0: idx,
+           length: length,
+           rindex: length - idx,
+           rindex0: length - idx - 1
+         }, item}
+      end)
+    end
+
     def safe_present?(data, path) do
       case safe_lookup(data, path) do
         {:ok, val} -> !!val
