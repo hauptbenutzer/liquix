@@ -106,7 +106,25 @@ defmodule Liquix do
     |> ignore(open_tag |> concat(string("endfor")) |> concat(close_tag))
     |> reduce({__MODULE__, :for_tag, []})
 
-  liquid = choice([object_tag, if_tag(), unless_tag(), case_tag(), assign_tag, for_tag])
+  raw_tag =
+    open_tag
+    |> ignore(string("raw"))
+    |> concat(close_tag)
+    |> optional(
+      times(
+        # TODO: this is not well thought-out
+        lookahead_not(string("{% endraw %}"))
+        |> utf8_string([], 1),
+        min: 1
+      )
+      |> reduce({Enum, :join, []})
+    )
+    |> concat(open_tag)
+    |> ignore(string("endraw"))
+    |> concat(close_tag)
+    |> reduce({Enum, :join, []})
+
+  liquid = choice([object_tag, if_tag(), unless_tag(), case_tag(), assign_tag, for_tag, raw_tag])
 
   garbage =
     times(
