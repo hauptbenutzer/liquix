@@ -5,7 +5,6 @@ defmodule Liquix do
   import Liquix.Compiler.Conditionals
 
   open_object_tag = ignore(string("{{") |> concat(whitespace_or_nothing()))
-  close_object_tag = ignore(whitespace_or_nothing() |> string("}}"))
 
   close_object_tag =
     ignore(
@@ -44,11 +43,34 @@ defmodule Liquix do
   object_tag =
     open_object_tag
     |> concat(parsec(:placeholder))
+    |> optional(
+      times(
+        wrap(
+          ignore(
+            whitespace_or_nothing()
+            |> string("|")
+            |> concat(whitespace_or_nothing())
+          )
+          |> unwrap_and_tag(identifier(), :name)
+          |> optional(
+            ignore(string(":"))
+            |> ignore(whitespace_or_nothing())
+            |> unwrap_and_tag(parsec(:literal), :param)
+            |> repeat(
+              ignore(whitespace_or_nothing())
+              |> ignore(string(","))
+              |> ignore(whitespace_or_nothing())
+              |> unwrap_and_tag(parsec(:literal), :param)
+            )
+          )
+        ),
+        min: 1
+      )
+      |> tag(:filters)
+    )
     |> concat(close_object_tag)
     |> reduce({__MODULE__, :object_tag, []})
 
-  open_tag = ignore(string("{%") |> concat(whitespace_or_nothing()))
-  close_tag = ignore(whitespace_or_nothing() |> string("%}"))
   open_tag =
     ignore(
       choice([
@@ -156,7 +178,6 @@ defmodule Liquix do
 
   garbage =
     times(
-      lookahead_not(choice([string("{{"), string("{%")]))
       lookahead_not(choice([whitespace() |> string("{%-"), string("{{"), string("{%"), string("{%-")]))
       |> utf8_string([], 1),
       min: 1
@@ -247,6 +268,23 @@ defmodule Liquix do
   def object_tag([ast]) do
     quote do
       Kernel.to_string(unquote(ast))
+    end
+  end
+
+  def object_tag([value, filters: filters]) do
+    filter_applies =
+      Enum.map(filters, fn [{:name, name} | params] ->
+        params = Keyword.get_values(params, :param)
+
+        quote do
+          val = Liquix.Runtime.filter(val, unquote(name), unquote(params))
+        end
+      end)
+
+    quote do
+      val = unquote(value)
+      unquote_splicing(filter_applies)
+      Kernel.to_string(val)
     end
   end
 

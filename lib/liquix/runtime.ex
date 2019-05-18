@@ -58,4 +58,12 @@ defmodule Liquix.Runtime do
       _ -> :nope
     end
   end
+
+  def filter(val, "at_most", [most]) do
+    min(val, most)
+  end
+
+  def filter(val, "replace", [this, that]) do
+    String.replace(val, this, that)
+  end
 end
