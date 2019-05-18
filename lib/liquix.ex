@@ -40,9 +40,9 @@ defmodule Liquix do
     )
   )
 
-  object_tag =
-    open_object_tag
-    |> concat(parsec(:placeholder))
+  defparsec(
+    :filterable_placeholder,
+    parsec(:placeholder)
     |> optional(
       times(
         wrap(
@@ -66,8 +66,13 @@ defmodule Liquix do
         ),
         min: 1
       )
-      |> tag(:filters)
     )
+    |> reduce({__MODULE__, :c_filterable_placeholder, []})
+  )
+
+  object_tag =
+    open_object_tag
+    |> parsec(:filterable_placeholder)
     |> concat(close_object_tag)
     |> reduce({__MODULE__, :object_tag, []})
 
@@ -137,7 +142,7 @@ defmodule Liquix do
     |> ignore(whitespace())
     |> ignore(string("="))
     |> ignore(whitespace())
-    |> unwrap_and_tag(parsec(:placeholder), :var_val)
+    |> unwrap_and_tag(parsec(:filterable_placeholder), :var_val)
     |> concat(close_tag)
     |> tag(parsec(:markup), :body)
     |> reduce({__MODULE__, :assign_tag, []})
@@ -212,7 +217,7 @@ defmodule Liquix do
 
   def assign_tag(var_name: var_name, var_val: var_val, body: body) do
     quote do
-      data = Map.put(data, unquote(String.to_atom(var_name)), unquote(var_val))
+      data = Map.put(data, unquote(var_name), unquote(var_val))
       unquote(body)
     end
   end
@@ -222,7 +227,7 @@ defmodule Liquix do
       case unquote(var_val) do
         list when is_list(list) ->
           for {forloop, item} <- Liquix.Runtime.forloop(list) do
-            data = data |> Map.put(:forloop, forloop) |> Map.put(unquote(String.to_atom(var_name)), item)
+            data = data |> Map.put(:forloop, forloop) |> Map.put(unquote(var_name), item)
             unquote(body)
           end
 
@@ -265,13 +270,13 @@ defmodule Liquix do
     end
   end
 
-  def object_tag([ast]) do
+  def object_tag([value]) do
     quote do
-      Kernel.to_string(unquote(ast))
+      Kernel.to_string(unquote(value))
     end
   end
 
-  def object_tag([value, filters: filters]) do
+  def c_filterable_placeholder([val | filters]) do
     filter_applies =
       Enum.map(filters, fn [{:name, name} | params] ->
         params = Keyword.get_values(params, :param)
@@ -282,9 +287,9 @@ defmodule Liquix do
       end)
 
     quote do
-      val = unquote(value)
+      val = unquote(val)
       unquote_splicing(filter_applies)
-      Kernel.to_string(val)
+      val
     end
   end
 

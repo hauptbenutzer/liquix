@@ -51,12 +51,14 @@ defmodule Liquix.Runtime do
   end
 
   def safe_lookup(data, [key | rest]) when is_binary(key) do
-    key = String.to_atom(key)
-
     case data do
       %{^key => val} -> safe_lookup(val, rest)
       _ -> :nope
     end
+  end
+
+  def filter(val, "abs", []) do
+    abs(to_number(val))
   end
 
   def filter(val, "at_most", [most]) do
@@ -65,5 +67,32 @@ defmodule Liquix.Runtime do
 
   def filter(val, "replace", [this, that]) do
     String.replace(val, this, that)
+  end
+
+  def filter(val, "split", [splitter]) do
+    String.split(val, splitter)
+  end
+
+  def filter(val, "uniq", []) do
+    Enum.uniq(val)
+  end
+
+  def filter(val, "join", [joiner]) do
+    Enum.join(val, joiner)
+  end
+
+  def to_number(val) when is_number(val), do: val
+
+  def to_number(val) when is_binary(val) do
+    case Integer.parse(val) do
+      {int, ""} ->
+        int
+
+      _ ->
+        case Float.parse(val) do
+          {float, ""} -> float
+          _ -> nil
+        end
+    end
   end
 end

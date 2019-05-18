@@ -61,11 +61,19 @@ defmodule Liquix.Compiler.Literals do
       |> ignore(ascii_char([?']))
       |> reduce({List, :to_string, []})
 
-  defp int(), do: integer(min: 1)
+  defp int(),
+    do:
+      optional(string("-"))
+      |> integer(min: 1)
+      |> map({Kernel, :to_string, []})
+      |> reduce({Enum, :join, []})
+      |> map({String, :to_integer, []})
+      |> reduce({List, :first, []})
 
   defp float(),
     do:
-      integer(min: 1)
+      optional(string("-"))
+      |> integer(min: 1)
       |> concat(string("."))
       |> integer(min: 1)
       # TODO: oh boy

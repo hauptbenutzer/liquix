@@ -20,6 +20,15 @@ defmodule LiquixFilterTest do
     """
 
     Liquix.compile_from_string(:uniq_join, template)
+
+    template = """
+    {{ -17 | abs }}
+    {{ 4 | abs }}
+    {{ "-19.86" | abs }}
+    {{ "-42" | abs}}
+    """
+
+    Liquix.compile_from_string(:abs, template)
   end
 
   test "at_most" do
@@ -31,6 +40,10 @@ defmodule LiquixFilterTest do
   end
 
   test "uniq_join" do
-    assert Bam.uniq_join(%{}) == "\n\nants, bugs, bees"
+    assert Bam.uniq_join(%{}) == "\n\nants, bugs, bees\n"
+  end
+
+  test "abs" do
+    assert Bam.abs(%{}) == "17\n4\n19.86\n42\n"
   end
 end
