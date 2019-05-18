@@ -7,6 +7,15 @@ defmodule Liquix do
   open_object_tag = ignore(string("{{") |> concat(whitespace_or_nothing()))
   close_object_tag = ignore(whitespace_or_nothing() |> string("}}"))
 
+  close_object_tag =
+    ignore(
+      whitespace_or_nothing()
+      |> choice([
+        string("}}"),
+        string("-}}") |> concat(whitespace())
+      ])
+    )
+
   defparsec(:literal, choice([string_literal(), num_literal(), atom_literal(), range_literal()]))
 
   object =
@@ -40,6 +49,25 @@ defmodule Liquix do
 
   open_tag = ignore(string("{%") |> concat(whitespace_or_nothing()))
   close_tag = ignore(whitespace_or_nothing() |> string("%}"))
+  open_tag =
+    ignore(
+      choice([
+        string("{%"),
+        string("{%-"),
+        whitespace() |> string("{%-")
+      ])
+      |> concat(whitespace_or_nothing())
+    )
+
+  close_tag =
+    ignore(
+      whitespace_or_nothing()
+      |> choice([
+        string("%}"),
+        string("-%}"),
+        string("-%}") |> concat(whitespace())
+      ])
+    )
 
   binary_operator =
     choice([
@@ -129,6 +157,7 @@ defmodule Liquix do
   garbage =
     times(
       lookahead_not(choice([string("{{"), string("{%")]))
+      lookahead_not(choice([whitespace() |> string("{%-"), string("{{"), string("{%"), string("{%-")]))
       |> utf8_string([], 1),
       min: 1
     )
