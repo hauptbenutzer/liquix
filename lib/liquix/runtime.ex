@@ -23,13 +23,13 @@ defmodule Liquix.Runtime do
     |> Enum.with_index()
     |> Enum.map(fn {item, idx} ->
       {%{
-         first: idx == 0,
-         last: idx == length - 1,
-         index: idx + 1,
-         index0: idx,
-         length: length,
-         rindex: length - idx,
-         rindex0: length - idx - 1
+         "first" => idx == 0,
+         "last" => idx == length - 1,
+         "index" => idx + 1,
+         "index0" => idx,
+         "length" => length,
+         "rindex" => length - idx,
+         "rindex0" => length - idx - 1
        }, item}
     end)
   end

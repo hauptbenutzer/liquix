@@ -1,15 +1,8 @@
 defmodule LiquixRawTest do
-  use ExUnit.Case
+  use Liquix.Test.LiquidCase, async: true
 
-  defmodule Bam do
-    require Liquix
-
-    template = "{% raw %}Hello {{ peter }} vs. {{{ peter }}} and {% for %}{% endraw %}"
-
-    Liquix.compile_from_string(:simple, template)
-  end
-
-  test "if with else" do
-    assert Bam.simple(%{}) == "Hello {{ peter }} vs. {{{ peter }}} and {% for %}"
+  @tag template: "{% raw %}Hello {{ peter }} vs. {{{ peter }}} and {% for %}{% endraw %}"
+  test "if with else", %{render: render} do
+    assert render.(%{}) == "Hello {{ peter }} vs. {{{ peter }}} and {% for %}"
   end
 end

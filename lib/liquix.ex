@@ -227,7 +227,7 @@ defmodule Liquix do
       case unquote(var_val) do
         list when is_list(list) ->
           for {forloop, item} <- Liquix.Runtime.forloop(list) do
-            data = data |> Map.put(:forloop, forloop) |> Map.put(unquote(var_name), item)
+            data = data |> Map.put("forloop", forloop) |> Map.put(unquote(var_name), item)
             unquote(body)
           end
 

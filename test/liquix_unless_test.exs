@@ -1,31 +1,17 @@
 defmodule LiquixUnlessTest do
-  use ExUnit.Case
+  use Liquix.Test.LiquidCase, async: true
 
-  defmodule Bam do
-    require Liquix
-
-    template = """
-    {% unless user %}Hello{% else %}Oh no!{% endunless %}
-    """
-
-    Liquix.compile_from_string(:unless_else, template)
-
-    template = """
-    {% unless a %}Hello{% elsif b %}Good god{% elsif c %}Help us{% else %}Oh no!{% endunless %}
-    """
-
-    Liquix.compile_from_string(:unless_elsif_else, template)
+  @tag template: ~S({% unless user %}Hello{% else %}Oh no!{% endunless %})
+  test "if with else", %{render: render} do
+    assert render.(%{"user" => "Peter"}) == "Oh no!"
+    assert render.(%{"user" => false}) == "Hello"
   end
 
-  test "if with else" do
-    assert Bam.unless_else(%{user: "Peter"}) == "Oh no!\n"
-    assert Bam.unless_else(%{user: false}) == "Hello\n"
-  end
-
-  test "if with elsif and else" do
-    assert Bam.unless_elsif_else(%{a: true}) == "Oh no!\n"
-    assert Bam.unless_elsif_else(%{a: true, b: true}) == "Good god\n"
-    assert Bam.unless_elsif_else(%{a: true, c: true}) == "Help us\n"
-    assert Bam.unless_elsif_else(%{}) == "Hello\n"
+  @tag template: ~S({% unless a %}Hello{% elsif b %}Good god{% elsif c %}Help us{% else %}Oh no!{% endunless %})
+  test "if with elsif and else", %{render: render} do
+    assert render.(%{"a" => true}) == "Oh no!"
+    assert render.(%{"a" => true, "b" => true}) == "Good god"
+    assert render.(%{"a" => true, "c" => true}) == "Help us"
+    assert render.(%{}) == "Hello"
   end
 end

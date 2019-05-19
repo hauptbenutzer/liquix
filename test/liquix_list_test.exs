@@ -1,42 +1,31 @@
 defmodule LiquixListTest do
-  use ExUnit.Case
+  use Liquix.Test.LiquidCase, async: true
 
-  defmodule Bam do
-    require Liquix
-
-    template = """
-    {% assign var = 2 %}
-    {{ list[0].name }} - {{ object['one'].nested[var] }}
-    """
-
-    Liquix.compile_from_string(:simple, template)
-
-    template = """
-    {% assign var = object['first'].nil %}
-    {{ var[object.second].here[object['third']] }}
-    """
-
-    Liquix.compile_from_string(:ridiculous, template)
-
-    template = """
-    {{ object['first']['second'].third }}
-    """
-
-    Liquix.compile_from_string(:chained, template)
-  end
-
-  test "simple" do
-    assert Bam.simple(%{list: [%{name: "peter"}], object: %{one: %{nested: [0, 0, "Wuhu!"]}}}) ==
+  @tag template: """
+       {% assign var = 2 %}
+       {{ list[0].name }} - {{ object['one'].nested[var] }}
+       """
+  test "simple", %{render: render} do
+    assert render.(%{"list" => [%{"name" => "peter"}], "object" => %{"one" => %{"nested" => [0, 0, "Wuhu!"]}}}) ==
              "\npeter - Wuhu!\n"
   end
 
-  test "ridiculous" do
-    assert Bam.ridiculous(%{
-             object: %{first: %{nil: %{nested: %{here: %{low: "Wuhu!"}}}}, second: "nested", third: "low"}
+  @tag template: """
+       {% assign var = object['first'].nil %}
+       {{ var[object.second].here[object['third']] }}
+       """
+  test "ridiculous", %{render: render} do
+    assert render.(%{
+             "object" => %{
+               "first" => %{"nil" => %{"nested" => %{"here" => %{"low" => "Wuhu!"}}}},
+               "second" => "nested",
+               "third" => "low"
+             }
            }) == "\nWuhu!\n"
   end
 
-  test "chained" do
-    assert Bam.chained(%{object: %{first: %{second: %{third: "Yes!"}}}}) == "Yes!\n"
+  @tag template: ~S({{ object['first']['second'].third }})
+  test "chained", %{render: render} do
+    assert render.(%{"object" => %{"first" => %{"second" => %{"third" => "Yes!"}}}}) == "Yes!"
   end
 end

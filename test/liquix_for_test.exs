@@ -1,42 +1,18 @@
 defmodule LiquixForTest do
-  use ExUnit.Case
+  use Liquix.Test.LiquidCase, async: true
 
-  defmodule Bam do
-    require Liquix
-
-    template = """
-    {% for user in site.users %}{{ user }} {% endfor %}
-    """
-
-    Liquix.compile_from_string(:simple, template)
-
-    template = """
-    {% for user in users %}
-      {{ user }} {{ forloop.index }}/{{ forloop.index0 }}/{{ forloop.rindex }}/{{ forloop.rindex0 }} of {{ forloop.length }}, {{ forloop.first }}|{{ forloop.last }}
-    {% endfor %}
-    """
-
-    Liquix.compile_from_string(:forloop_object, template)
-
-    template = """
-    {% for i in (0..4) %}{{ i }} {% endfor %}
-    """
-
-    Liquix.compile_from_string(:simple_range, template)
-
-    template = """
-    {% for i in (from..to) %}{{ i }} {% endfor %}
-    """
-
-    Liquix.compile_from_string(:var_range, template)
+  @tag template: ~S({% for user in site.users %}{{ user }} {% endfor %})
+  test "simple for", %{render: render} do
+    assert render.(%{"site" => %{"users" => ["Peter", "Retep", "Suzy"]}}) == "Peter Retep Suzy "
   end
 
-  test "simple for" do
-    assert Bam.simple(%{site: %{users: ["Peter", "Retep", "Suzy"]}}) == "Peter Retep Suzy \n"
-  end
-
-  test "forloop object" do
-    assert Bam.forloop_object(%{users: ["Peter", "Retep", "Suzzy"]}) ==
+  @tag template: """
+       {% for user in users %}
+         {{ user }} {{ forloop.index }}/{{ forloop.index0 }}/{{ forloop.rindex }}/{{ forloop.rindex0 }} of {{ forloop.length }}, {{ forloop.first }}|{{ forloop.last }}
+       {% endfor %}
+       """
+  test "forloop object", %{render: render} do
+    assert render.(%{"users" => ["Peter", "Retep", "Suzzy"]}) ==
              """
 
                Peter 1/0/3/2 of 3, true|false
@@ -48,13 +24,15 @@ defmodule LiquixForTest do
              """
   end
 
-  test "simple range" do
-    assert Bam.simple_range(%{}) == "0 1 2 3 4 \n"
+  @tag template: ~S[{% for i in (0..4) %}{{ i }} {% endfor %}]
+  test "simple range", %{render: render} do
+    assert render.(%{}) == "0 1 2 3 4 "
   end
 
-  test "var range" do
-    assert Bam.var_range(%{from: -3, to: 2}) == "-3 -2 -1 0 1 2 \n"
-    assert Bam.var_range(%{from: "-3", to: "2"}) == "-3 -2 -1 0 1 2 \n"
-    assert Bam.var_range(%{from: "nosir", to: -2.6}) == "0 -1 -2 \n"
+  @tag template: ~S[{% for i in (from..to) %}{{ i }} {% endfor %}]
+  test "var range", %{render: render} do
+    assert render.(%{"from" => -3, "to" => 2}) == "-3 -2 -1 0 1 2 "
+    assert render.(%{"from" => "-3", "to" => "2"}) == "-3 -2 -1 0 1 2 "
+    assert render.(%{"from" => "nosir", "to" => -2.6}) == "0 -1 -2 "
   end
 end
