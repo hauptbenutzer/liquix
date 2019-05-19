@@ -27,7 +27,7 @@ defmodule Liquix do
     {:ok, ast, _, _, _, _} = Compiler.parse(template)
 
     Macro.postwalk(ast, fn
-      {x, y, Compiler} -> {x, y, nil}
+      {:data, y, _} -> {:data, y, nil}
       expr -> expr
     end)
   end

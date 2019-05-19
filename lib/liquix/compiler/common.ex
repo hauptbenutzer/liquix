@@ -8,6 +8,27 @@ defmodule Liquix.Compiler.Common do
   def open_tag(), do: ignore(string("{%") |> concat(whitespace_or_nothing()))
   def close_tag(), do: ignore(whitespace_or_nothing() |> string("%}"))
 
+  # open_tag =
+  #   ignore(
+  #     choice([
+  #       string("{%"),
+  #       string("{%-"),
+  #       whitespace() |> string("{%-")
+  #     ])
+  #     |> concat(whitespace_or_nothing())
+  #   )
+  #
+  #
+  # close_tag =
+  #   ignore(
+  #     whitespace_or_nothing()
+  #     |> choice([
+  #       string("%}"),
+  #       string("-%}"),
+  #       string("-%}") |> concat(whitespace())
+  #     ])
+  #   )
+
   def identifier(),
     do:
       ascii_string([?a..?z, ?A..?Z, ?_], 1)

@@ -3,6 +3,7 @@ defmodule Liquix.Compiler do
   import Liquix.Compiler.Common
   import Liquix.Compiler.Literals
   import Liquix.Compiler.Conditionals
+  import Liquix.Compiler.Iteration
 
   open_object_tag = ignore(string("{{") |> concat(whitespace_or_nothing()))
 
@@ -76,26 +77,6 @@ defmodule Liquix.Compiler do
     |> concat(close_object_tag)
     |> reduce({__MODULE__, :object_tag, []})
 
-  open_tag =
-    ignore(
-      choice([
-        string("{%"),
-        string("{%-"),
-        whitespace() |> string("{%-")
-      ])
-      |> concat(whitespace_or_nothing())
-    )
-
-  close_tag =
-    ignore(
-      whitespace_or_nothing()
-      |> choice([
-        string("%}"),
-        string("-%}"),
-        string("-%}") |> concat(whitespace())
-      ])
-    )
-
   binary_operator =
     choice([
       string("contains"),
@@ -135,7 +116,7 @@ defmodule Liquix.Compiler do
   )
 
   assign_tag =
-    open_tag
+    open_tag()
     |> ignore(string("assign"))
     |> ignore(whitespace())
     |> unwrap_and_tag(identifier(), :var_name)
@@ -143,28 +124,14 @@ defmodule Liquix.Compiler do
     |> ignore(string("="))
     |> ignore(whitespace())
     |> unwrap_and_tag(parsec(:filterable_placeholder), :var_val)
-    |> concat(close_tag)
+    |> concat(close_tag())
     |> tag(parsec(:markup), :body)
     |> reduce({__MODULE__, :assign_tag, []})
 
-  for_tag =
-    open_tag
-    |> ignore(string("for"))
-    |> ignore(whitespace())
-    |> unwrap_and_tag(identifier(), :var_name)
-    |> ignore(whitespace())
-    |> ignore(string("in"))
-    |> ignore(whitespace())
-    |> unwrap_and_tag(parsec(:placeholder), :var_val)
-    |> concat(close_tag)
-    |> tag(parsec(:markup), :body)
-    |> ignore(open_tag |> concat(string("endfor")) |> concat(close_tag))
-    |> reduce({__MODULE__, :for_tag, []})
-
   raw_tag =
-    open_tag
+    open_tag()
     |> ignore(string("raw"))
-    |> concat(close_tag)
+    |> concat(close_tag())
     |> optional(
       times(
         # TODO: this is not well thought-out
@@ -174,12 +141,12 @@ defmodule Liquix.Compiler do
       )
       |> reduce({Enum, :join, []})
     )
-    |> concat(open_tag)
+    |> concat(open_tag())
     |> ignore(string("endraw"))
-    |> concat(close_tag)
+    |> concat(close_tag())
     |> reduce({Enum, :join, []})
 
-  liquid = choice([object_tag, if_tag(), unless_tag(), case_tag(), assign_tag, for_tag, raw_tag])
+  liquid = choice([object_tag, if_tag(), unless_tag(), case_tag(), assign_tag, for_tag(), raw_tag])
 
   garbage =
     times(
@@ -197,21 +164,6 @@ defmodule Liquix.Compiler do
     quote do
       data = Map.put(data, unquote(var_name), unquote(var_val))
       unquote(body)
-    end
-  end
-
-  def for_tag(var_name: var_name, var_val: var_val, body: body) do
-    quote do
-      case unquote(var_val) do
-        list when is_list(list) ->
-          for {forloop, item} <- Liquix.Runtime.forloop(list) do
-            data = data |> Map.put("forloop", forloop) |> Map.put(unquote(var_name), item)
-            unquote(body)
-          end
-
-        _ ->
-          ""
-      end
     end
   end
 
