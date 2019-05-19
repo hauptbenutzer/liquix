@@ -2,6 +2,8 @@ defmodule Liquix.Compiler.Literals do
   import NimbleParsec
   import Liquix.Compiler.Common
 
+  def any_literal(), do: choice([string_literal(), num_literal(), atom_literal(), range_literal()])
+
   @doc ~S"""
   `'me is a \' string'` and `"me \" too"`
   """

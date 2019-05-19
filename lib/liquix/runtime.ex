@@ -34,13 +34,6 @@ defmodule Liquix.Runtime do
     end)
   end
 
-  def safe_present?(data, path) do
-    case safe_lookup(data, path) do
-      {:ok, val} -> !!val
-      :nope -> false
-    end
-  end
-
   def safe_lookup(data, []), do: {:ok, data}
 
   def safe_lookup(data, [key | rest]) when is_integer(key) do

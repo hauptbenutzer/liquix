@@ -1,45 +1,16 @@
 defmodule Liquix.Compiler do
   import NimbleParsec
   import Liquix.Compiler.Common
-  import Liquix.Compiler.Literals
   import Liquix.Compiler.Conditionals
   import Liquix.Compiler.Iteration
 
-  open_object_tag = ignore(string("{{") |> concat(whitespace_or_nothing()))
+  import Liquix.Compiler.Literals
+  import Liquix.Compiler.Object
 
-  close_object_tag =
-    ignore(
-      whitespace_or_nothing()
-      |> choice([
-        string("}}"),
-        string("-}}") |> concat(whitespace())
-      ])
-    )
+  defparsec(:literal, any_literal())
+  defparsec(:placeholder, choice([parsec(:literal), object()]))
 
-  defparsec(:literal, choice([string_literal(), num_literal(), atom_literal(), range_literal()]))
-
-  object =
-    parsec(:object_path)
-    |> reduce({__MODULE__, :object, []})
-
-  defparsec(:placeholder, choice([parsec(:literal), object]))
-
-  defparsec(
-    :object_path,
-    identifier()
-    |> optional(
-      times(
-        ignore(string("["))
-        |> parsec(:placeholder)
-        |> ignore(string("]")),
-        min: 1
-      )
-    )
-    |> optional(
-      ignore(string("."))
-      |> parsec(:object_path)
-    )
-  )
+  defparsec(:object_path, object_path())
 
   defparsec(
     :filterable_placeholder,
@@ -70,12 +41,6 @@ defmodule Liquix.Compiler do
     )
     |> reduce({__MODULE__, :c_filterable_placeholder, []})
   )
-
-  object_tag =
-    open_object_tag
-    |> parsec(:filterable_placeholder)
-    |> concat(close_object_tag)
-    |> reduce({__MODULE__, :object_tag, []})
 
   binary_operator =
     choice([
@@ -146,7 +111,7 @@ defmodule Liquix.Compiler do
     |> concat(close_tag())
     |> reduce({Enum, :join, []})
 
-  liquid = choice([object_tag, if_tag(), unless_tag(), case_tag(), assign_tag, for_tag(), raw_tag])
+  liquid = choice([object_tag(), if_tag(), unless_tag(), case_tag(), assign_tag, for_tag(), raw_tag])
 
   garbage =
     times(
@@ -194,18 +159,6 @@ defmodule Liquix.Compiler do
   def c_if_clause(if_clause: [single_clause]), do: single_clause
   def c_if_clause(single_clause), do: single_clause
 
-  def object_present?(path) do
-    quote do
-      Liquix.Runtime.safe_present?(data, unquote(path))
-    end
-  end
-
-  def object_tag([value]) do
-    quote do
-      Kernel.to_string(unquote(value))
-    end
-  end
-
   def c_filterable_placeholder([val | filters]) do
     filter_applies =
       Enum.map(filters, fn [{:name, name} | params] ->
@@ -220,15 +173,6 @@ defmodule Liquix.Compiler do
       val = unquote(val)
       unquote_splicing(filter_applies)
       val
-    end
-  end
-
-  def object(path) do
-    quote do
-      case Liquix.Runtime.safe_lookup(data, unquote(path)) do
-        {:ok, stuff} -> stuff
-        :nope -> nil
-      end
     end
   end
 
