@@ -8,10 +8,10 @@ defmodule Liquix.Test.LiquidCase do
       contents =
         quote do
           require Liquix
-          Liquix.compile_from_string(:render, unquote(template))
+          Liquix.compile_from_string(:render, unquote(template), unquote(context[:options] || []))
         end
 
-      Module.create(modname, contents, Macro.Env.location(__ENV__))
+      Module.create(modname, contents, Map.take(context, [:file, :line]) |> Map.to_list())
 
       [render: &modname.render/1]
     else
